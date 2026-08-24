@@ -1,0 +1,74 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: timescaledb
+  namespace: {{ .Release.Namespace }}
+  labels: {app: timescaledb}
+spec:
+  clusterIP: None
+  selector: {app: timescaledb}
+  ports:
+    - {name: postgres, port: 5432, targetPort: 5432}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: timescaledb
+  namespace: {{ .Release.Namespace }}
+  labels: {app: timescaledb}
+spec:
+  serviceName: timescaledb
+  replicas: 1
+  selector:
+    matchLabels: {app: timescaledb}
+  template:
+    metadata:
+      labels: {app: timescaledb}
+    spec:
+      nodeSelector: {{ toYaml .Values.nodeSelector | nindent 8 }}
+      {{- if .Values.tolerations }}
+      tolerations: {{ toYaml .Values.tolerations | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: timescaledb
+          image: {{ .Values.timescaledb.image }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - {name: postgres, containerPort: 5432}
+          env:
+            - {name: POSTGRES_USER, value: "{{ .Values.timescaledb.user }}"}
+            - name: POSTGRES_PASSWORD
+              valueFrom: {secretKeyRef: {name: {{ .Values.secretName }}, key: db-password}}
+            # A SUBDIRECTORY of the mount, not the mount itself. A real
+            # PersistentVolume is a formatted ext4 filesystem and arrives with a
+            # lost+found, which makes initdb refuse to initialise: "directory
+            # exists but is not empty". Upstream's docker-compose.yml gets away
+            # with the mount point directly only because a Docker named volume
+            # has no lost+found.
+            - {name: PGDATA, value: /var/lib/postgresql/data/pgdata}
+            # Raise together with the server's COLONIES_DB_MAX_OPEN_CONNS, or
+            # 200 executors' worth of traffic produces "too many connections".
+            - {name: TS_TUNE_MAX_CONNS, value: "{{ .Values.timescaledb.maxConns }}"}
+            - {name: TZ, value: "{{ .Values.tz }}"}
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "{{ .Values.timescaledb.user }}"]
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "{{ .Values.timescaledb.user }}"]
+            initialDelaySeconds: 60
+            periodSeconds: 20
+          resources: {{ toYaml .Values.timescaledb.resources | nindent 12 }}
+          volumeMounts:
+            - {name: data, mountPath: /var/lib/postgresql/data}
+  volumeClaimTemplates:
+    - apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata: {name: data}
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: "{{ .Values.timescaledb.storage.storageClassName }}"
+        resources:
+          requests: {storage: {{ .Values.timescaledb.storage.size }}}

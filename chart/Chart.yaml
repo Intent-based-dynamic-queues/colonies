@@ -1,0 +1,5 @@
+apiVersion: v2
+name: colonies-server
+description: ColonyOS meta-scheduler (priority-channel fork) + TimescaleDB for the priority-decay testbed
+type: application
+version: 0.1.0

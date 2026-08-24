@@ -1,0 +1,113 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: colonies-server
+  namespace: {{ .Release.Namespace }}
+  labels: {app: colonies-server}
+spec:
+  # Headless, and it serves two purposes: it gives the StatefulSet the stable
+  # per-pod DNS name colonies-server-0.colonies-server that etcd's
+  # --initial-cluster is pinned to, AND it is what clients resolve
+  # (colonies-server.<ns>) to reach the single replica.
+  clusterIP: None
+  # etcd has to resolve peers before the pod is ready, and the readiness gate
+  # here depends on the server being up. Without this the name is empty exactly
+  # when it is first needed.
+  publishNotReadyAddresses: true
+  selector: {app: colonies-server}
+  ports:
+    - {name: http, port: {{ .Values.server.port }}, targetPort: {{ .Values.server.port }}}
+    - {name: relay, port: {{ .Values.server.relayPort }}, targetPort: {{ .Values.server.relayPort }}}
+    - {name: etcd-client, port: {{ .Values.server.etcdClientPort }}, targetPort: {{ .Values.server.etcdClientPort }}}
+    - {name: etcd-peer, port: {{ .Values.server.etcdPeerPort }}, targetPort: {{ .Values.server.etcdPeerPort }}}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: colonies-server
+  namespace: {{ .Release.Namespace }}
+  labels: {app: colonies-server}
+spec:
+  serviceName: colonies-server
+  # One replica. --initial-cluster below names exactly this pod; scaling this
+  # up needs the etcd cluster string rebuilt, not just a bigger number.
+  replicas: 1
+  selector:
+    matchLabels: {app: colonies-server}
+  template:
+    metadata:
+      labels: {app: colonies-server}
+    spec:
+      nodeSelector: {{ toYaml .Values.nodeSelector | nindent 8 }}
+      {{- if .Values.tolerations }}
+      tolerations: {{ toYaml .Values.tolerations | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: colonies-server
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - {name: http, containerPort: {{ .Values.server.port }}}
+            - {name: relay, containerPort: {{ .Values.server.relayPort }}}
+            - {name: etcd-client, containerPort: {{ .Values.server.etcdClientPort }}}
+            - {name: etcd-peer, containerPort: {{ .Values.server.etcdPeerPort }}}
+          env:
+            - {name: COLONIES_TLS, value: "false"}
+            - {name: COLONIES_SERVER_PORT, value: "{{ .Values.server.port }}"}
+            - name: COLONIES_SERVER_ID
+              valueFrom: {secretKeyRef: {name: {{ .Values.secretName }}, key: server-id}}
+            - name: COLONIES_SERVER_PRVKEY
+              valueFrom: {secretKeyRef: {name: {{ .Values.secretName }}, key: server-prvkey}}
+            - {name: COLONIES_DB_HOST, value: "timescaledb.{{ .Release.Namespace }}.svc.cluster.local"}
+            - {name: COLONIES_DB_PORT, value: "5432"}
+            - {name: COLONIES_DB_USER, value: "{{ .Values.timescaledb.user }}"}
+            - name: COLONIES_DB_PASSWORD
+              valueFrom: {secretKeyRef: {name: {{ .Values.secretName }}, key: db-password}}
+            - {name: COLONIES_DB_TIMESCALEDB, value: "true"}
+            - {name: COLONIES_DB_MAX_OPEN_CONNS, value: "{{ .Values.server.dbMaxOpenConns }}"}
+            - {name: COLONIES_DB_MAX_IDLE_CONNS, value: "{{ .Values.server.dbMaxIdleConns }}"}
+            - {name: COLONIES_EXCLUSIVE_ASSIGN, value: "{{ .Values.server.exclusiveAssign }}"}
+            - {name: COLONIES_ALLOW_EXECUTOR_REREGISTER, value: "{{ .Values.server.allowExecutorReregister }}"}
+            - {name: COLONIES_RETENTION, value: "{{ .Values.server.retention }}"}
+            - {name: COLONIES_VERBOSE, value: "{{ .Values.server.verbose }}"}
+            # Raised well above the upstream 100: the control loop reads the
+            # whole WAITING queue to compute per-priority depth, and the head
+            # of the queue is not a sample of it -- decayed work sorts to the
+            # tail. Requesting more than this is an error, not a truncation.
+            - {name: COLONIES_MAX_COUNT, value: "{{ .Values.server.maxCount }}"}
+            # Not optional: without TZ the DB layer errors and then segfaults in
+            # a deferred Close(), which hides the real cause.
+            - {name: TZ, value: "{{ .Values.tz }}"}
+          command: ["sh", "-c"]
+          args:
+            - >-
+              colonies server start --initdb
+              --port {{ .Values.server.port }}
+              --relayport {{ .Values.server.relayPort }}
+              --etcdname {{ .Values.server.etcdName }}
+              --etcdhost colonies-server-0.colonies-server
+              --etcdclientport {{ .Values.server.etcdClientPort }}
+              --etcdpeerport {{ .Values.server.etcdPeerPort }}
+              --initial-cluster {{ .Values.server.etcdName }}=colonies-server-0.colonies-server:{{ .Values.server.etcdPeerPort }}:{{ .Values.server.relayPort }}:{{ .Values.server.port }}
+              --etcddatadir {{ .Values.server.etcdDataDir }}
+              --insecure
+          readinessProbe:
+            tcpSocket: {port: {{ .Values.server.port }}}
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket: {port: {{ .Values.server.port }}}
+            initialDelaySeconds: 90
+            periodSeconds: 20
+          resources: {{ toYaml .Values.server.resources | nindent 12 }}
+          volumeMounts:
+            - {name: etcd, mountPath: {{ .Values.server.etcdDataDir }}}
+  volumeClaimTemplates:
+    - apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata: {name: etcd}
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: "{{ .Values.server.storage.storageClassName }}"
+        resources:
+          requests: {storage: {{ .Values.server.storage.size }}}

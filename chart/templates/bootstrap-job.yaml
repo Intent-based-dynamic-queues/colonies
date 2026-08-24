@@ -1,0 +1,78 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: colonies-bootstrap
+  namespace: {{ .Release.Namespace }}
+  labels: {app: colonies-bootstrap}
+  annotations:
+    # A fresh server has no colony and no user, and every executor and client
+    # call fails until it does. Upstream does this in a colonies-setup
+    # container; here it is a Helm hook so it runs on install and on upgrade.
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "0"
+    # hook-succeeded (not just before-hook-creation): a completed Job that
+    # just sits there is a hook resource ArgoCD won't auto-prune, and it
+    # keeps the whole Application flagged OutOfSync forever for no functional
+    # reason. Delete it as soon as it succeeds instead.
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 10
+  template:
+    metadata:
+      labels: {app: colonies-bootstrap}
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: bootstrap
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - {name: COLONIES_SERVER_HOST, value: "colonies-server.{{ .Release.Namespace }}.svc.cluster.local"}
+            - {name: COLONIES_SERVER_PORT, value: "{{ .Values.server.port }}"}
+            - {name: COLONIES_TLS, value: "false"}
+            - {name: TZ, value: "{{ .Values.tz }}"}
+            - {name: COLONIES_COLONY_NAME, value: "{{ .Values.colonyName }}"}
+            - {name: COLONIES_USER_NAME, value: "{{ .Values.userName }}"}
+            - name: COLONIES_SERVER_ID
+              valueFrom: {secretKeyRef: {name: {{ .Values.secretName }}, key: server-id}}
+            - name: COLONIES_SERVER_PRVKEY
+              valueFrom: {secretKeyRef: {name: {{ .Values.secretName }}, key: server-prvkey}}
+            - name: COLONIES_COLONY_ID
+              valueFrom: {secretKeyRef: {name: {{ .Values.secretName }}, key: colony-id}}
+            - name: COLONIES_COLONY_PRVKEY
+              valueFrom: {secretKeyRef: {name: {{ .Values.secretName }}, key: colony-prvkey}}
+            - name: COLONIES_ID
+              valueFrom: {secretKeyRef: {name: {{ .Values.secretName }}, key: user-id}}
+            - name: COLONIES_PRVKEY
+              valueFrom: {secretKeyRef: {name: {{ .Values.secretName }}, key: user-prvkey}}
+          command: ["sh", "-c"]
+          args:
+            - |
+              set -eu
+
+              echo "waiting for the colonies server..."
+              until colonies server status >/dev/null 2>&1; do sleep 3; done
+              echo "server is up"
+
+              # Idempotent on purpose: this runs again on every upgrade, and a
+              # Job that fails on "already exists" leaves the release stuck
+              # Progressing forever.
+              if colonies colony ls --json 2>/dev/null | grep -q "\"name\":\"${COLONIES_COLONY_NAME}\""; then
+                echo "colony ${COLONIES_COLONY_NAME} already exists"
+              else
+                echo "creating colony ${COLONIES_COLONY_NAME}"
+                colonies colony add --name "${COLONIES_COLONY_NAME}" --colonyid "${COLONIES_COLONY_ID}"
+              fi
+
+              # `user ls` does not honor --json in this build (unlike `colony
+              # ls`), so this greps the table output instead. -w avoids the
+              # header row ("USERNAME") false-matching a short username.
+              if colonies user ls 2>/dev/null | grep -qw "${COLONIES_USER_NAME}"; then
+                echo "user ${COLONIES_USER_NAME} already exists"
+              else
+                echo "creating user ${COLONIES_USER_NAME}"
+                colonies user add --name "${COLONIES_USER_NAME}" --email '' --phone '' --userid "${COLONIES_ID}"
+              fi
+
+              echo "bootstrap complete"
+              colonies colony ls

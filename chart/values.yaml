@@ -1,0 +1,60 @@
+# ColonyOS is not stateless: the server runs an embedded etcd with a data
+# directory and needs a stable pod hostname for its --initial-cluster string.
+# That is why this is a StatefulSet, not a Deployment.
+#
+# Moved here from vikingvault-infrastructure's helm/colonies-server/
+# (2026-08-24, journal-1 cloud-native migration) -- chart lives in this repo
+# now, image.tag bumped by this repo's own CI (.github/workflows/image.yml)
+# in the same commit/push instead of a cross-repo bump. The SealedSecret
+# referenced below (secretName) deliberately still lives in the infra repo
+# (sealed-secrets/decay-system/) -- it's cluster-encrypted ciphertext, not
+# application code, and a generic sealed-secrets-sync Application already
+# applies that whole directory.
+image:
+  repository: docker.io/cappelumpa/colonies
+  tag: priority-channel-483e0e43   # bumped by this repo's own CI on every build
+  pullPolicy: IfNotPresent
+imagePullSecret: ""
+
+secretName: colonies-keys   # SealedSecret lives in the infra repo's sealed-secrets/decay-system/
+
+colonyName: dev
+userName: myuser
+
+nodeSelector:
+  decay.io/tier: local
+tolerations: []
+
+tz: Europe/Stockholm
+
+server:
+  port: 50080
+  relayPort: 25100
+  etcdName: server1
+  etcdClientPort: 23100
+  etcdPeerPort: 24100
+  etcdDataDir: /var/colonies/etcd
+  dbMaxOpenConns: "100"
+  dbMaxIdleConns: "100"
+  exclusiveAssign: "true"
+  allowExecutorReregister: "true"
+  retention: "false"
+  verbose: "false"
+  maxCount: "100000"
+  storage:
+    storageClassName: longhorn-single-odin
+    size: 2Gi
+  resources:
+    requests: {cpu: 200m, memory: 512Mi}
+    limits: {memory: 2Gi}
+
+timescaledb:
+  image: timescale/timescaledb:latest-pg17
+  user: postgres
+  maxConns: "1000"
+  storage:
+    storageClassName: longhorn-single-odin
+    size: 8Gi
+  resources:
+    requests: {cpu: 250m, memory: 512Mi}
+    limits: {memory: 4Gi}

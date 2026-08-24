@@ -3,8 +3,8 @@ name: Image
 # Replaces the old docker_master.yaml, which pushed to ghcr.io/casperlundberg
 # with docker/metadata-action's default tags (main/latest/semver). The cluster
 # pulls docker.io/cappelumpa/colonies:priority-channel-<sha8>
-# (helm/colonies-server/values.yaml), so nothing that workflow built had ever
-# been what actually ran.
+# (chart/values.yaml), so nothing that workflow built had ever been what
+# actually ran.
 on:
   push:
     branches: ['**']
@@ -98,6 +98,8 @@ jobs:
          (github.event_name == 'workflow_dispatch' || github.ref_type == 'tag' ||
           github.ref_name == (vars.DEPLOY_BRANCH || 'main')) }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: write   # the chart/values.yaml bump pushes back to this repo
     steps:
       - uses: actions/checkout@v4
         with:
@@ -108,14 +110,17 @@ jobs:
       #
       # The SHA is the last commit touching source, not HEAD: a workflow or
       # README commit must not re-tag the image and trigger a pointless
-      # redeploy. This exclude set must stay identical to the `colonies` case in
-      # priority-decay-journal's deploy/scripts/image-tag.sh and to the
-      # branch-sha8 strategy in vikingvault-infrastructure.
+      # redeploy. Also excludes chart/ (2026-08-24): the Bump step below
+      # commits into it, so without this exclude that commit would become
+      # "the last commit touching source" and freeze the tag on every
+      # subsequent push. This exclude set must stay identical to the
+      # `colonies` case in priority-decay-journal's
+      # deploy/scripts/image-tag.sh.
       - name: Derive tag
         id: tag
         run: |
           branch=$(echo "${GITHUB_REF_NAME}" | tr '/' '-')
-          sha=$(git log -1 --format=%h --abbrev=8 -- . ':!.github' ':!*.md' ':!docs')
+          sha=$(git log -1 --format=%h --abbrev=8 -- . ':!.github' ':!*.md' ':!docs' ':!chart')
           tag="${branch}-${sha}"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "ref=${REGISTRY}/${NAMESPACE}/${IMAGE}:${tag}" >> "$GITHUB_OUTPUT"
@@ -155,39 +160,38 @@ jobs:
           cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.IMAGE }}:buildcache
           cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.IMAGE }}:buildcache,mode=max
 
-      # Push-from-dev bump, matching the direction apps/ uses. Runs even when the
-      # build was skipped: an existing tag is still the tag that should be pinned.
+      # Bump this repo's OWN chart/values.yaml, same commit/push -- no more
+      # cross-repo hop into vikingvault-infrastructure (2026-08-24, journal-1
+      # cloud-native migration: the chart moved here). Uses the default
+      # GITHUB_TOKEN specifically because GitHub Actions does not re-trigger
+      # on: push workflows for commits made with that token, so this can
+      # never loop into re-running itself. Runs even when the build was
+      # skipped: an existing tag is still the tag that should be pinned.
       # Only the deploy branch may move the cluster -- set the DEPLOY_BRANCH
       # repository variable (here: priority-channel).
-      - name: Bump colonies-server in vikingvault-infrastructure
+      - name: Bump chart/values.yaml
         if: github.ref_name == (vars.DEPLOY_BRANCH || 'main')
-        env:
-          GH_TOKEN: ${{ secrets.INFRASTRUCTURE_REPO_TOKEN || secrets.INFRASTRUCTURE_REPO_TOKEN_BACKUP }}
         run: |
           set -euo pipefail
-          git clone --quiet \
-            "https://x-access-token:${GH_TOKEN}@github.com/vikingvault-labs/vikingvault-infrastructure.git" \
-            /tmp/infra
-          cd /tmp/infra
           git config user.name  'GitHub Actions'
           git config user.email 'actions@github.com'
 
           # Reset-and-reapply on each attempt: setting a tag to a known value is
           # idempotent, so a concurrent push can never conflict.
           for i in 1 2 3 4 5; do
-            git fetch --quiet origin main
-            git reset --hard --quiet origin/main
+            git fetch --quiet origin "${{ github.ref_name }}"
+            git reset --hard --quiet "origin/${{ github.ref_name }}"
             python3 .github/scripts/set_image_tag.py \
-              helm/colonies-server/values.yaml '${{ steps.tag.outputs.tag }}'
-            git add -- helm/colonies-server/values.yaml
+              chart/values.yaml '${{ steps.tag.outputs.tag }}'
+            git add -- chart/values.yaml
             if git diff --cached --quiet; then
               echo "colonies-server already pinned to ${{ steps.tag.outputs.tag }}"
               exit 0
             fi
-            git commit --quiet -m "chore(images): colonies-server ${{ steps.tag.outputs.tag }}
+            git commit --quiet -m "chore(image): colonies-server ${{ steps.tag.outputs.tag }} [skip ci]
 
           From ${{ github.repository }}@${{ github.sha }} (${{ github.ref_name }})."
-            git push --quiet origin HEAD:main && exit 0 || sleep $((i * 2))
+            git push --quiet origin "HEAD:${{ github.ref_name }}" && exit 0 || sleep $((i * 2))
           done
-          echo "::error::could not push to vikingvault-infrastructure after 5 attempts"
+          echo "::error::could not push the chart bump after 5 attempts"
           exit 1
