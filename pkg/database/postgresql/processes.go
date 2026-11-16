@@ -370,28 +370,28 @@ func (db *PQDatabase) FindWaitingProcesses(colonyName string, executorType strin
 	var err error
 
 	if executorType != "" {
-		sqlStatement = `SELECT * FROM ` + db.dbPrefix + `PROCESSES WHERE TARGET_COLONY_NAME=$1 AND EXECUTOR_TYPE=$2 AND STATE=$3 ORDER BY PRIORITYTIME LIMIT $4`
+		sqlStatement = `SELECT * FROM ` + db.dbPrefix + `PROCESSES WHERE TARGET_COLONY_NAME=$1 AND EXECUTOR_TYPE=$2 AND STATE=$3 ORDER BY PRIORITY DESC, PRIORITYTIME ASC, PROCESS_ID ASC LIMIT $4`
 		rows, err = db.postgresql.Query(sqlStatement, colonyName, executorType, core.WAITING, count)
 		if err != nil {
 			return nil, err
 		}
 		defer rows.Close()
 	} else if initiator != "" {
-		sqlStatement = `SELECT * FROM ` + db.dbPrefix + `PROCESSES WHERE TARGET_COLONY_NAME=$1 AND INITIATOR_NAME=$2 AND STATE=$3 ORDER BY PRIORITYTIME LIMIT $4`
+		sqlStatement = `SELECT * FROM ` + db.dbPrefix + `PROCESSES WHERE TARGET_COLONY_NAME=$1 AND INITIATOR_NAME=$2 AND STATE=$3 ORDER BY PRIORITY DESC, PRIORITYTIME ASC, PROCESS_ID ASC LIMIT $4`
 		rows, err = db.postgresql.Query(sqlStatement, colonyName, initiator, core.WAITING, count)
 		if err != nil {
 			return nil, err
 		}
 		defer rows.Close()
 	} else if label != "" {
-		sqlStatement = `SELECT * FROM ` + db.dbPrefix + `PROCESSES WHERE TARGET_COLONY_NAME=$1 AND LABEL=$2 AND STATE=$3 ORDER BY PRIORITYTIME LIMIT $4`
+		sqlStatement = `SELECT * FROM ` + db.dbPrefix + `PROCESSES WHERE TARGET_COLONY_NAME=$1 AND LABEL=$2 AND STATE=$3 ORDER BY PRIORITY DESC, PRIORITYTIME ASC, PROCESS_ID ASC LIMIT $4`
 		rows, err = db.postgresql.Query(sqlStatement, colonyName, label, core.WAITING, count)
 		if err != nil {
 			return nil, err
 		}
 		defer rows.Close()
 	} else {
-		sqlStatement = `SELECT * FROM ` + db.dbPrefix + `PROCESSES WHERE TARGET_COLONY_NAME=$1 AND STATE=$2 ORDER BY PRIORITYTIME LIMIT $3`
+		sqlStatement = `SELECT * FROM ` + db.dbPrefix + `PROCESSES WHERE TARGET_COLONY_NAME=$1 AND STATE=$2 ORDER BY PRIORITY DESC, PRIORITYTIME ASC, PROCESS_ID ASC LIMIT $3`
 		rows, err = db.postgresql.Query(sqlStatement, colonyName, core.WAITING, count)
 		if err != nil {
 			return nil, err
@@ -553,7 +553,7 @@ func (db *PQDatabase) FindAllRunningProcesses() ([]*core.Process, error) {
 }
 
 func (db *PQDatabase) FindAllWaitingProcesses() ([]*core.Process, error) {
-	sqlStatement := `SELECT * FROM ` + db.dbPrefix + `PROCESSES WHERE STATE=$1 ORDER BY PRIORITYTIME LIMIT 1000`
+	sqlStatement := `SELECT * FROM ` + db.dbPrefix + `PROCESSES WHERE STATE=$1 ORDER BY PRIORITY DESC, PRIORITYTIME ASC, PROCESS_ID ASC LIMIT 1000`
 	rows, err := db.postgresql.Query(sqlStatement, core.WAITING)
 	if err != nil {
 		return nil, err
@@ -571,7 +571,7 @@ func (db *PQDatabase) FindAllWaitingProcesses() ([]*core.Process, error) {
 func (db *PQDatabase) FindCandidates(colonyName string, executorType string, executorLocationName string, cpu int64, memory int64, storage int64, nodes int, processes int, processesPerNode int, count int) ([]*core.Process, error) {
 	var sqlStatement string
 
-	sqlStatement = `SELECT * FROM ` + db.dbPrefix + `PROCESSES WHERE STATE=$1 AND EXECUTOR_TYPE=$2 AND IS_ASSIGNED=FALSE AND WAIT_FOR_PARENTS=FALSE AND TARGET_COLONY_NAME=$3 AND array_length(TARGET_EXECUTOR_NAMES, 1) IS NULL AND CPU<=$4 AND MEMORY<=$5 AND STORAGE<=$6 AND NODES<=$7 AND PROCESSES<=$8 AND PROCESSES_PER_NODE<=$9 AND (LOCATION_NAME IS NULL OR LOCATION_NAME = '' OR LOWER(LOCATION_NAME) = LOWER($10)) ORDER BY PRIORITYTIME LIMIT $11`
+	sqlStatement = `SELECT * FROM ` + db.dbPrefix + `PROCESSES WHERE STATE=$1 AND EXECUTOR_TYPE=$2 AND IS_ASSIGNED=FALSE AND WAIT_FOR_PARENTS=FALSE AND TARGET_COLONY_NAME=$3 AND array_length(TARGET_EXECUTOR_NAMES, 1) IS NULL AND CPU<=$4 AND MEMORY<=$5 AND STORAGE<=$6 AND NODES<=$7 AND PROCESSES<=$8 AND PROCESSES_PER_NODE<=$9 AND (LOCATION_NAME IS NULL OR LOCATION_NAME = '' OR LOWER(LOCATION_NAME) = LOWER($10)) ORDER BY PRIORITY DESC, PRIORITYTIME ASC, PROCESS_ID ASC LIMIT $11`
 	rows, err := db.postgresql.Query(sqlStatement, core.WAITING, executorType, colonyName, cpu, memory, storage, nodes, processes, processesPerNode, executorLocationName, count)
 	if err != nil {
 		return nil, err
@@ -589,7 +589,7 @@ func (db *PQDatabase) FindCandidates(colonyName string, executorType string, exe
 func (db *PQDatabase) FindCandidatesByName(colonyName string, executorName string, executorType string, executorLocationName string, cpu int64, memory int64, storage int64, nodes int, processes int, processesPerNode int, count int) ([]*core.Process, error) {
 	var sqlStatement string
 
-	sqlStatement = `SELECT * FROM ` + db.dbPrefix + `PROCESSES WHERE STATE=$1 AND $2=ANY(TARGET_EXECUTOR_NAMES) AND EXECUTOR_TYPE=$3 AND IS_ASSIGNED=FALSE AND WAIT_FOR_PARENTS=FALSE AND TARGET_COLONY_NAME=$4 AND CPU<=$5 AND MEMORY<=$6 AND STORAGE<=$7 AND NODES<=$8 AND PROCESSES<=$9 AND PROCESSES_PER_NODE<=$10 AND (LOCATION_NAME IS NULL OR LOCATION_NAME = '' OR LOWER(LOCATION_NAME) = LOWER($11)) ORDER BY PRIORITYTIME LIMIT $12`
+	sqlStatement = `SELECT * FROM ` + db.dbPrefix + `PROCESSES WHERE STATE=$1 AND $2=ANY(TARGET_EXECUTOR_NAMES) AND EXECUTOR_TYPE=$3 AND IS_ASSIGNED=FALSE AND WAIT_FOR_PARENTS=FALSE AND TARGET_COLONY_NAME=$4 AND CPU<=$5 AND MEMORY<=$6 AND STORAGE<=$7 AND NODES<=$8 AND PROCESSES<=$9 AND PROCESSES_PER_NODE<=$10 AND (LOCATION_NAME IS NULL OR LOCATION_NAME = '' OR LOWER(LOCATION_NAME) = LOWER($11)) ORDER BY PRIORITY DESC, PRIORITYTIME ASC, PROCESS_ID ASC LIMIT $12`
 	rows, err := db.postgresql.Query(sqlStatement, core.WAITING, executorName, executorType, colonyName, cpu, memory, storage, nodes, processes, processesPerNode, executorLocationName, count)
 	if err != nil {
 		return nil, err
@@ -969,7 +969,7 @@ func (db *PQDatabase) SelectAndAssign(colonyName string, executorID string, exec
 			  AND CPU <= $5 AND MEMORY <= $6 AND STORAGE <= $7
 			  AND NODES <= $8 AND PROCESSES <= $9 AND PROCESSES_PER_NODE <= $10
 			  AND (LOCATION_NAME IS NULL OR LOCATION_NAME = '' OR LOWER(LOCATION_NAME) = LOWER($11))
-			ORDER BY PRIORITYTIME ASC
+			ORDER BY PRIORITY DESC, PRIORITYTIME ASC, PROCESS_ID ASC
 			LIMIT 1
 			FOR UPDATE SKIP LOCKED
 		)

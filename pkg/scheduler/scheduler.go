@@ -16,8 +16,17 @@ func (c byLowestPriorityTime) Len() int {
 	return len(c)
 }
 
+// Less is the dispatch order, the same as the database's ORDER BY PRIORITY
+// DESC, PRIORITYTIME ASC, PROCESS_ID ASC: strict priority, then submission
+// order, then process ID. Age never overtakes priority.
 func (c byLowestPriorityTime) Less(i, j int) bool {
-	return c[i].PriorityTime < c[j].PriorityTime
+	if c[i].FunctionSpec.Priority != c[j].FunctionSpec.Priority {
+		return c[i].FunctionSpec.Priority > c[j].FunctionSpec.Priority
+	}
+	if c[i].PriorityTime != c[j].PriorityTime {
+		return c[i].PriorityTime < c[j].PriorityTime
+	}
+	return c[i].ID < c[j].ID
 }
 
 func (c byLowestPriorityTime) Swap(i, j int) {

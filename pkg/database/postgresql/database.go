@@ -687,7 +687,7 @@ func (db *PQDatabase) createProcessesIndex6() error {
 }
 
 func (db *PQDatabase) createProcessesIndex7() error {
-	sqlStatement := `CREATE INDEX ` + db.dbPrefix + `PROCESSES_INDEX7 ON ` + db.dbPrefix + `PROCESSES (TARGET_COLONY_NAME, STATE, PRIORITYTIME)`
+	sqlStatement := `CREATE INDEX ` + db.dbPrefix + `PROCESSES_INDEX7 ON ` + db.dbPrefix + `PROCESSES (TARGET_COLONY_NAME, STATE, PRIORITY DESC, PRIORITYTIME ASC, PROCESS_ID ASC)`
 	_, err := db.postgresql.Exec(sqlStatement)
 	if err != nil {
 		return err
@@ -697,7 +697,7 @@ func (db *PQDatabase) createProcessesIndex7() error {
 }
 
 func (db *PQDatabase) createProcessesIndex8() error {
-	sqlStatement := `CREATE INDEX ` + db.dbPrefix + `PROCESSES_INDEX8 ON ` + db.dbPrefix + `PROCESSES (TARGET_COLONY_NAME, STATE, EXECUTOR_TYPE, PRIORITYTIME)`
+	sqlStatement := `CREATE INDEX ` + db.dbPrefix + `PROCESSES_INDEX8 ON ` + db.dbPrefix + `PROCESSES (TARGET_COLONY_NAME, STATE, EXECUTOR_TYPE, PRIORITY DESC, PRIORITYTIME ASC, PROCESS_ID ASC)`
 	_, err := db.postgresql.Exec(sqlStatement)
 	if err != nil {
 		return err
@@ -707,7 +707,7 @@ func (db *PQDatabase) createProcessesIndex8() error {
 }
 
 func (db *PQDatabase) createProcessesIndex9() error {
-	sqlStatement := `CREATE INDEX ` + db.dbPrefix + `PROCESSES_INDEX9 ON ` + db.dbPrefix + `PROCESSES (TARGET_COLONY_NAME, STATE, INITIATOR_NAME, PRIORITYTIME)`
+	sqlStatement := `CREATE INDEX ` + db.dbPrefix + `PROCESSES_INDEX9 ON ` + db.dbPrefix + `PROCESSES (TARGET_COLONY_NAME, STATE, INITIATOR_NAME, PRIORITY DESC, PRIORITYTIME ASC, PROCESS_ID ASC)`
 	_, err := db.postgresql.Exec(sqlStatement)
 	if err != nil {
 		return err
@@ -717,7 +717,7 @@ func (db *PQDatabase) createProcessesIndex9() error {
 }
 
 func (db *PQDatabase) createProcessesIndex10() error {
-	sqlStatement := `CREATE INDEX ` + db.dbPrefix + `PROCESSES_INDEX10 ON ` + db.dbPrefix + `PROCESSES (TARGET_COLONY_NAME, STATE, LABEL, PRIORITYTIME)`
+	sqlStatement := `CREATE INDEX ` + db.dbPrefix + `PROCESSES_INDEX10 ON ` + db.dbPrefix + `PROCESSES (TARGET_COLONY_NAME, STATE, LABEL, PRIORITY DESC, PRIORITYTIME ASC, PROCESS_ID ASC)`
 	_, err := db.postgresql.Exec(sqlStatement)
 	if err != nil {
 		return err
@@ -753,7 +753,7 @@ func (db *PQDatabase) createProcessesAssignGIN() error {
 // SelectAndAssign hot path. Only includes waiting, unassigned processes that
 // are not waiting for parents.
 func (db *PQDatabase) createProcessesAssignBTree() error {
-	sqlStatement := `CREATE INDEX ` + db.dbPrefix + `PROCESSES_ASSIGN_BTREE ON ` + db.dbPrefix + `PROCESSES (TARGET_COLONY_NAME, EXECUTOR_TYPE, PRIORITYTIME) WHERE STATE = 0 AND IS_ASSIGNED = FALSE AND WAIT_FOR_PARENTS = FALSE`
+	sqlStatement := `CREATE INDEX ` + db.dbPrefix + `PROCESSES_ASSIGN_BTREE ON ` + db.dbPrefix + `PROCESSES (TARGET_COLONY_NAME, EXECUTOR_TYPE, PRIORITY DESC, PRIORITYTIME ASC, PROCESS_ID ASC) WHERE STATE = 0 AND IS_ASSIGNED = FALSE AND WAIT_FOR_PARENTS = FALSE`
 	_, err := db.postgresql.Exec(sqlStatement)
 	if err != nil {
 		return err

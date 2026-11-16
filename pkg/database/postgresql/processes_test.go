@@ -15,7 +15,15 @@ import (
 type byLowestPriorityTime []*core.Process
 
 func (c byLowestPriorityTime) Len() int           { return len(c) }
-func (c byLowestPriorityTime) Less(i, j int) bool { return c[i].PriorityTime < c[j].PriorityTime }
+func (c byLowestPriorityTime) Less(i, j int) bool {
+	if c[i].FunctionSpec.Priority != c[j].FunctionSpec.Priority {
+		return c[i].FunctionSpec.Priority > c[j].FunctionSpec.Priority
+	}
+	if c[i].PriorityTime != c[j].PriorityTime {
+		return c[i].PriorityTime < c[j].PriorityTime
+	}
+	return c[i].ID < c[j].ID
+}
 func (c byLowestPriorityTime) Swap(i, j int)      { c[i], c[j] = c[j], c[i] }
 
 // schedulerSelect replicates scheduler.Select logic for testing

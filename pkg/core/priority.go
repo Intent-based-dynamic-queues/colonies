@@ -5,12 +5,17 @@ import (
 	"time"
 )
 
-// PriorityTimeUnit is the queue displacement of one priority unit, in
-// nanoseconds. It is NEGATIVE: a higher priority subtracts more and therefore
-// sorts earlier under the assign path's ORDER BY PRIORITYTIME.
+// PriorityTimeUnit is the displacement of one priority unit inside the stored
+// key PRIORITYTIME, in nanoseconds (negative: a higher priority subtracts more).
 //
-// One unit is one day, so any practical priority ladder behaves as strict
-// priority tiers with FIFO inside a tier.
+// The queue no longer orders by PRIORITYTIME alone. Under that key one unit was
+// worth one day of waiting, so a job one level lower that had waited more than
+// a day overtook a newer higher one. Every queue path now orders by PRIORITY
+// DESC, PRIORITYTIME ASC, PROCESS_ID ASC: strict priority, and within one
+// priority PRIORITYTIME differs only by submission time, so it gives exact FIFO
+// (it survives ResetProcess, which rewrites SUBMISSION_TIME). The key and this
+// unit are kept so stored rows, the priority channel's delta update and clients
+// that read prioritytime keep working.
 const PriorityTimeUnit int64 = -1000000000 * 60 * 60 * 24
 
 // ComputePriorityTime derives the ordering key from a priority and a submission
