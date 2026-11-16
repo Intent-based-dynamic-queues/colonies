@@ -12,7 +12,7 @@
 # applies that whole directory.
 image:
   repository: docker.io/cappelumpa/colonies
-  tag: priority-channel-483e0e43   # bumped by this repo's own CI on every build
+  tag: priority-channel-fb11f34b   # bumped by this repo's own CI on every build
   pullPolicy: IfNotPresent
 imagePullSecret: ""
 
