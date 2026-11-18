@@ -27,3 +27,18 @@ func TestCreateCluster(t *testing.T) {
 	config.Leader = node1
 	assert.False(t, config.Equals(config2))
 }
+
+func TestConfigEqualsComparesNodeCountsBothWays(t *testing.T) {
+	node1 := Node{Name: "etcd1", Host: "localhost", EtcdClientPort: 24100, EtcdPeerPort: 23100, RelayPort: 25100, APIPort: 26100}
+	node2 := Node{Name: "etcd2", Host: "localhost", EtcdClientPort: 24200, EtcdPeerPort: 23200, RelayPort: 25200, APIPort: 26200}
+
+	small := Config{Leader: node1}
+	small.AddNode(node1)
+	large := Config{Leader: node1}
+	large.AddNode(node1)
+	large.AddNode(node2)
+
+	assert.False(t, small.Equals(&large), "a config is not equal to one with an extra node")
+	assert.False(t, large.Equals(&small), "a config is not equal to one missing a node")
+	assert.True(t, small.Equals(&small))
+}
