@@ -81,6 +81,13 @@ type FunctionSpec struct {
 	// submitted, and these are server-resolved.
 	PriorityFloor   *int `json:"priorityfloor,omitempty"`
 	PriorityCeiling *int `json:"priorityceiling,omitempty"`
+
+	// The priority the process was submitted with, recorded by the server when
+	// the process is added (a value sent by the client is ignored) and reported
+	// on every read. Priority changes with the priority channel; this does not,
+	// and a ceiling above it no longer tells what was submitted. Nil on rows
+	// written before it existed. Like the bounds, not part of Equals.
+	PrioritySubmitted *int `json:"prioritysubmitted,omitempty"`
 }
 
 // ResolvePriorityBounds returns the effective [floor, ceiling] for priority

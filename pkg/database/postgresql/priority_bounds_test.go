@@ -286,3 +286,62 @@ func TestSetProcessPrioritiesEmptyBatch(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Len(t, results, 0)
 }
+
+// A ceiling above the submitted priority leaves room to escalate, so the
+// ceiling no longer tells what the process was submitted with. Readers that
+// restore a process to its submitted priority need that value itself.
+func TestSubmittedPriorityIsReportedAfterChannelUpdates(t *testing.T) {
+	db, err := PrepareTests()
+	assert.Nil(t, err)
+	defer db.Close()
+
+	colony := core.CreateColony(core.GenerateRandomID(), "test_colony_name")
+
+	ceiling := 100
+	process := addProcessWithBounds(t, db, colony.Name, 50, nil, &ceiling)
+
+	read, err := db.GetProcessByID(process.ID)
+	assert.Nil(t, err)
+	if assert.NotNil(t, read.FunctionSpec.PrioritySubmitted) {
+		assert.Equal(t, 50, *read.FunctionSpec.PrioritySubmitted)
+	}
+
+	results, err := db.SetProcessPriorities(colony.Name, []core.PriorityUpdate{{ProcessID: process.ID, Priority: 90}})
+	assert.Nil(t, err)
+	assert.Equal(t, core.PriorityUpdated, results[0].Outcome)
+
+	read, err = db.GetProcessByID(process.ID)
+	assert.Nil(t, err)
+	assert.Equal(t, 90, read.FunctionSpec.Priority)
+	assert.Equal(t, 100, *read.FunctionSpec.PriorityCeiling)
+	if assert.NotNil(t, read.FunctionSpec.PrioritySubmitted) {
+		assert.Equal(t, 50, *read.FunctionSpec.PrioritySubmitted, "the submitted priority survives a channel update")
+	}
+
+	waiting, err := db.FindWaitingProcesses(colony.Name, "", "", "", 10)
+	assert.Nil(t, err)
+	if assert.Len(t, waiting, 1) && assert.NotNil(t, waiting[0].FunctionSpec.PrioritySubmitted) {
+		assert.Equal(t, 50, *waiting[0].FunctionSpec.PrioritySubmitted, "the queue listing reports it too")
+	}
+}
+
+// The server records what was submitted; a value sent by the client is ignored.
+func TestSubmittedPriorityIsSetByTheServer(t *testing.T) {
+	db, err := PrepareTests()
+	assert.Nil(t, err)
+	defer db.Close()
+
+	colony := core.CreateColony(core.GenerateRandomID(), "test_colony_name")
+
+	process := utils.CreateTestProcess(colony.Name)
+	process.FunctionSpec.Priority = 50
+	forged := 7
+	process.FunctionSpec.PrioritySubmitted = &forged
+	assert.Nil(t, db.AddProcess(process))
+
+	read, err := db.GetProcessByID(process.ID)
+	assert.Nil(t, err)
+	if assert.NotNil(t, read.FunctionSpec.PrioritySubmitted) {
+		assert.Equal(t, 50, *read.FunctionSpec.PrioritySubmitted)
+	}
+}
