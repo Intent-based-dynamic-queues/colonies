@@ -3,7 +3,7 @@ package client
 import (
 	"context"
 
-	"github.com/colonyos/colonies/pkg/cluster"
+	"github.com/colonyos/colonies/pkg/cluster/config"
 	"github.com/colonyos/colonies/pkg/core"
 	"github.com/colonyos/colonies/pkg/rpc"
 )
@@ -67,7 +67,7 @@ func (client *ColoniesClient) CheckHealth() error {
 	return client.backend.CheckHealth()
 }
 
-func (client *ColoniesClient) GetClusterInfo(prvKey string) (*cluster.Config, error) {
+func (client *ColoniesClient) GetClusterInfo(prvKey string) (*config.Config, error) {
 	msg := rpc.CreateGetClusterMsg()
 	jsonString, err := msg.ToJSON()
 	if err != nil {
@@ -79,7 +79,7 @@ func (client *ColoniesClient) GetClusterInfo(prvKey string) (*cluster.Config, er
 		return nil, err
 	}
 
-	return cluster.ConvertJSONToConfig(respBodyString)
+	return config.ConvertJSONToConfig(respBodyString)
 }
 
 func (client *ColoniesClient) ChangeServerID(serverID string, prvKey string) error {

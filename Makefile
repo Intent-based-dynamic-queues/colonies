@@ -81,6 +81,7 @@ test:
 	@cd pkg/validate; go test -v --race
 	@cd pkg/channel; go test -v --race
 	@cd pkg/cluster; go test -v --race
+	@cd pkg/cluster/config; go test -v --race
 	@cd pkg/cron; go test -v --race
 	@cd pkg/fs; go test -v --race
 
